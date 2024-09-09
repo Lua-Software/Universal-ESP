@@ -1,0 +1,140 @@
+-- Universal ESP
+
+Camera = workspace.CurrentCamera
+Drawing = Drawing
+UIS = game:GetService("UserInputService")
+RunService = game:GetService("RunService")
+Enabled = true
+Victims = {}
+assert(Drawing, "Your executor wont work with Universal ESP")
+
+function GetCharacterSize(Player)
+    local Model = Player.Character
+    local _, ModelSize = Model:GetBoundingBox()
+    local WorldCFrame, Size = Model.PrimaryPart.CFrame, Model.PrimaryPart.Size
+
+    local Corners = {
+        WorldCFrame * Vector3.new(-Size.X / 2, -Size.Y / 2, -Size.Z / 2),
+        WorldCFrame * Vector3.new(-Size.X / 2, -Size.Y / 2, Size.Z / 2),
+        WorldCFrame * Vector3.new(-Size.X / 2, Size.Y / 2, Size.Z / 2),
+        WorldCFrame * Vector3.new(Size.X / 2, Size.Y / 2, -Size.Z / 2),
+        WorldCFrame * Vector3.new(Size.X / 2, -Size.Y / 2, -Size.Z / 2),
+        WorldCFrame * Vector3.new(-Size.X / 2, Size.Y / 2, -Size.Z / 2),
+        WorldCFrame * Vector3.new(Size.X / 2, -Size.Y / 2, Size.Z / 2),
+        WorldCFrame * Vector3.new(Size.X / 2, Size.Y / 2, Size.Z / 2)
+    }
+
+    local MinPos = Vector2.new(math.huge, math.huge)
+    local MaxPos = Vector2.new(-math.huge, -math.huge)
+
+    local ScreenTime = true
+    local ScreenPos = nil
+
+    for _, Corner in ipairs(Corners) do
+        local ScreenPosition, _ = Camera:WorldToViewportPoint(Corner)
+        local WorldCFramePos, OnScreen = Camera:WorldToViewportPoint(WorldCFrame.Position)
+
+        ScreenPos = WorldCFramePos
+
+        if OnScreen then
+            MaxPos = Vector2.new(math.max(MaxPos.X, ScreenPosition.X), math.max(MaxPos.Y, ScreenPosition.Y))
+            MinPos = Vector2.new(math.min(MinPos.X, ScreenPosition.X), math.min(MinPos.Y, ScreenPosition.Y))
+        else
+            ScreenTime = false
+            break
+        end
+    end
+
+    return MinPos, Vector2.new(
+        MaxPos.X - MinPos.X, 
+        math.min(MinPos.Y, ModelSize.Y) + ((MaxPos.Y - MinPos.Y) * 2)
+    ), ScreenTime, Vector2.new(
+        ScreenPos.X, 
+        ScreenPos.Y
+    )
+end
+
+function Update()
+    for i, v in pairs(game.Players:GetPlayers()) do
+        if Victims[v] ~= nil and v.Character ~= nil then
+            local charPos, charSize, onScreen, screenPos = GetCharacterSize(v)
+            if onScreen then
+                local box = Victims[v].Box
+                local tracer = Victims[v].Tracer
+
+                box.Size = charSize
+                box.Position = charPos
+
+                tracer.From = UIS:GetMouseLocation()
+                tracer.To = screenPos
+            else
+                Victims[v].Box:Remove()
+                Victims[v].Tracer:Remove()
+                Victims[v] = nil
+            end
+        elseif v ~= game.Players.LocalPlayer and v.Character ~= nil and v.Team ~= game.Players.LocalPlayer.Team then
+            local charPos, charSize, onScreen, screenPos = GetCharacterSize(v)
+            if onScreen then
+                Victims[v] = {
+                    Box = Drawing.new("Square"),
+                    Tracer = Drawing.new("Line")
+                }
+                local box = Victims[v].Box
+                local tracer = Victims[v].Tracer
+
+                box.Visible = true
+                tracer.Visible = true
+
+                box.Thickness = 2
+                box.Filled = false
+                box.Color = Color3.fromRGB(144, 238, 144)
+                box.Size = charSize
+                box.Position = charPos
+
+                tracer.From = UIS:GetMouseLocation()
+                tracer.To = screenPos
+                tracer.Thickness = 2
+                tracer.Color = Color3.fromRGB(144, 238, 144)
+            end
+        end
+    end
+
+    for i, v in Victims do
+        local Team = false
+
+        if i.Team == nil then
+            Team = false
+        elseif i.Team == game.Players.LocalPlayer.Team then
+            Team = true
+        end
+
+        if i == nil or i.Character == nil or Team then
+            Victims[i].Box:Remove()
+            Victims[i].Tracer:Remove()
+            Victims[i] = nil
+        end
+    end
+end
+
+function Cancel() 
+    for i, v in Victims do
+        Victims[i].Box:Remove()
+        Victims[i].Tracer:Remove()
+        Victims[i] = nil
+    end
+end
+
+RunService:BindToRenderStep("ESP", Enum.RenderPriority.Camera.Value, Update)
+
+UIS.InputBegan:Connect(function(key) 
+    if key == Enum.KeyCode.Q then
+        if Enabled then
+            RunService:UnbindFromRenderStep("ESP")
+            Cancel()
+        else
+            RunService:BindToRenderStep("ESP", Enum.RenderPriority.Camera.Value, Update)
+        end
+    
+        Enabled = not Enabled
+    end
+end)
